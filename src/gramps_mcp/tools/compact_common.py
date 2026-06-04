@@ -125,14 +125,54 @@ async def fetch_people(
 async def resolve_person_by_gramps_id(
     client, tree_id: str, gramps_id: str
 ) -> Optional[Dict]:
-    """Look up a single person by gramps_id (e.g. 'I0005'); None if not found."""
+    """Look up a single person by gramps_id (e.g. 'I0005'); None if not found.
+
+    Includes family_list so the affinal (spouse-bridge) relationship logic can
+    traverse spouses without a second fetch.
+    """
     people = await fetch_people(
         client,
         tree_id,
         gramps_id=gramps_id,
-        keys="handle,gramps_id,primary_name,gender",
+        keys="handle,gramps_id,primary_name,gender,family_list,parent_family_list",
     )
     return people[0] if people else None
+
+
+async def fetch_person(client, tree_id: str, handle: str) -> Optional[Dict]:
+    """Fetch a single full person object by handle."""
+    return await client.make_api_call(
+        api_call=ApiCalls.GET_PERSON, tree_id=tree_id, handle=handle
+    )
+
+
+async def fetch_family(client, tree_id: str, handle: str) -> Optional[Dict]:
+    """Fetch a single family object by handle (has father_handle/mother_handle)."""
+    return await client.make_api_call(
+        api_call=ApiCalls.GET_FAMILY, tree_id=tree_id, handle=handle
+    )
+
+
+async def spouse_people(client, tree_id: str, person: Dict) -> List[Dict]:
+    """
+    Return the person's spouse/partner person dicts, via the families they are a
+    parent in (the other parent handle). Used by the affinal relationship bridge.
+    """
+    out: List[Dict] = []
+    self_handle = person.get("handle")
+    seen = set()
+    for fh in person.get("family_list") or []:
+        family = await fetch_family(client, tree_id, fh)
+        if not family:
+            continue
+        for key in ("father_handle", "mother_handle"):
+            other = family.get(key)
+            if other and other != self_handle and other not in seen:
+                seen.add(other)
+                sp = await fetch_person(client, tree_id, other)
+                if sp:
+                    out.append(sp)
+    return out
 
 
 def person_ref(person: Optional[Dict], gramps_id_fallback: str = "") -> Dict:

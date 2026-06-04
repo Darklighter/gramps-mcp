@@ -27,7 +27,12 @@ from datetime import date
 from src.gramps_mcp.handlers.date_handler import parse_gramps_date
 from src.gramps_mcp.server import TOOL_REGISTRY
 from src.gramps_mcp.tools.birthdays import _birthday_in_range
-from src.gramps_mcp.tools.relations import _blood_code, _refine_code
+from src.gramps_mcp.tools.relations import (
+    _blood_code,
+    _inlaw_from_spouse_blood,
+    _refine_code,
+    _spouse_word,
+)
 
 NEW_TOOLS = [
     "get_birthdays",
@@ -100,3 +105,27 @@ def test_refine_code_in_law_and_side():
     assert (
         _refine_code("дедушка по маме", "grandfather", 1) == "maternal_grandfather"
     )
+
+
+def test_affinal_parent_in_law_labels():
+    # to is the parent of from's spouse: (df=1, do=0). from male → тесть/тёща.
+    label, code = _inlaw_from_spouse_blood(1, 0, 1, 1, "отец", "ru")
+    assert (label, code) == ("тесть", "father_in_law")
+    label, code = _inlaw_from_spouse_blood(1, 0, 1, 0, "мать", "ru")
+    assert (label, code) == ("тёща", "mother_in_law")
+    # from female → свёкор/свекровь.
+    label, code = _inlaw_from_spouse_blood(1, 0, 0, 1, "отец", "ru")
+    assert (label, code) == ("свёкор", "father_in_law")
+
+
+def test_affinal_sibling_and_generic():
+    label, code = _inlaw_from_spouse_blood(1, 1, 1, 1, "брат", "ru")
+    assert code == "sibling_in_law" and "брат" in label
+    label, code = _inlaw_from_spouse_blood(2, 2, 1, 1, "двоюродный брат", "ru")
+    assert code == "relative_by_marriage"
+
+
+def test_spouse_word():
+    assert _spouse_word(1, "ru") == "муж"
+    assert _spouse_word(0, "ru") == "жена"
+    assert _spouse_word(1, "en") == "husband"

@@ -332,6 +332,8 @@ async def get_birthdays_with_relationships_tool(
                     anchor_person["handle"],
                     target_handle,
                     to_gender=target_gender,
+                    from_person=anchor_person,
+                    to_person=target,
                     language=params.language,
                 )
                 if not params.include_paths:
