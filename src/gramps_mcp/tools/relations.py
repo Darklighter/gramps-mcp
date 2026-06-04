@@ -33,6 +33,7 @@ from pydantic import BaseModel, Field
 from ..config import get_settings
 from ..models.api_calls import ApiCalls
 from .compact_common import (
+    fetch_family,
     fetch_person,
     format_error_response,
     json_response,
@@ -155,6 +156,38 @@ async def _native_relation(client, tree_id, h1, h2, language, depth):
         data.get("distance_common_origin"),
         data.get("distance_common_other"),
     )
+
+
+async def _grandparent_side(client, tree_id, from_person, to_handle, language, depth):
+    """
+    For a grandparent ``to`` of ``from`` (Gramps returns a side-less "дедушка"),
+    determine whether the line runs through the mother ("maternal") or the father
+    ("paternal"). Returns "maternal" / "paternal" / None.
+
+    Uses ``from``'s parent family: if ``to`` is a blood ancestor of the mother
+    handle → maternal; of the father handle → paternal.
+    """
+    for fh in from_person.get("parent_family_list") or []:
+        family = await fetch_family(client, tree_id, fh)
+        if not family:
+            continue
+        for handle, side in (
+            (family.get("mother_handle"), "maternal"),
+            (family.get("father_handle"), "paternal"),
+        ):
+            if not handle:
+                continue
+            rstr, df, do = await _native_relation(
+                client, tree_id, handle, to_handle, language, depth
+            )
+            # `to` is an ancestor of this parent: parent sits df>=1 below it, to do==0.
+            if (
+                rstr
+                and isinstance(df, int) and isinstance(do, int)
+                and df >= 1 and do == 0
+            ):
+                return side
+    return None
 
 
 def _spouse_word(gender, language):
@@ -378,6 +411,23 @@ async def compute_relationship(
         )
         base = _blood_code(d_from, d_other, to_gender)
         code = _refine_code(rel_str, base, to_gender)
+
+        # Maternal/paternal side for grandparents when Gramps returns a side-less
+        # label (e.g. "дедушка"). Skipped if _refine_code already added a side.
+        if code in ("grandfather", "grandmother", "grandparent"):
+            if from_person is None:
+                from_person = await fetch_person(client, tree_id, from_handle)
+            if from_person:
+                side = await _grandparent_side(
+                    client, tree_id, from_person, to_handle, language, max_depth
+                )
+                if side:
+                    code = f"{side}_{code}"
+                    if language == "ru":
+                        rel_str += " по маме" if side == "maternal" else " по папе"
+                    else:
+                        rel_str = f"{side} {rel_str}"
+
         distance = (d_from + d_other) if is_blood else None
         confidence = "exact" if is_blood else "approximate"
         return _result(rel_str, code, confidence, distance, [])
