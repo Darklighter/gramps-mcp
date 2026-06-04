@@ -163,6 +163,22 @@ def _spouse_word(gender, language):
     return "husband" if gender == 1 else "wife" if gender == 0 else "spouse"
 
 
+def _spouse_side_label(from_gender, language):
+    """The marriage 'side' `from` connects through: a female connects through her
+    husband, a male through his wife. Used for two-hop affinal labels."""
+    if language == "ru":
+        if from_gender == 0:
+            return "по линии мужа"
+        if from_gender == 1:
+            return "по линии жены"
+        return "по линии супруга(и)"
+    if from_gender == 0:
+        return "on the husband's side"
+    if from_gender == 1:
+        return "on the wife's side"
+    return "on the spouse's side"
+
+
 def _inlaw_from_spouse_blood(df, do, from_gender, to_gender, rel_str, language):
     """`to` is a blood relative (df, do) of `from`'s spouse → affinal label/code."""
     ru = language == "ru"
@@ -222,9 +238,13 @@ def _inlaw_from_spouse_blood(df, do, from_gender, to_gender, rel_str, language):
 
 
 async def _affinal_relationship(
-    client, tree_id, from_person, to_person, language, depth
+    client, tree_id, from_person, to_person, language, depth, allow_recurse=True
 ):
-    """Resolve an in-law/affinal relationship via spouses when no blood path exists."""
+    """Resolve an in-law/affinal relationship via spouses when no blood path exists.
+
+    ``allow_recurse`` enables the two-hop bridge (Bridge C); it is set False on the
+    recursive call to bound the chain to a single extra marriage hop.
+    """
     from_handle = from_person.get("handle")
     to_handle = to_person.get("handle")
     from_gender = from_person.get("gender")
@@ -291,6 +311,34 @@ async def _affinal_relationship(
                 label, code, "approximate", None, ["Spouse of a relative (affinal)."]
             )
 
+    # Bridge C: two-hop affinal — `to` is related (by blood or marriage) to
+    # `from`'s SPOUSE. Recurse one level through the spouse, then wrap as
+    # "по линии мужа/жены". Disabled on the inner call to bound the chain.
+    if allow_recurse:
+        for s in from_spouses:
+            sub = await compute_relationship(
+                client,
+                tree_id,
+                s.get("handle"),
+                to_handle,
+                to_gender=to_gender,
+                from_person=s,
+                to_person=to_person,
+                language=language,
+                max_depth=depth,
+                _allow_spouse_recurse=False,
+            )
+            if sub and sub.get("relationship"):
+                side = _spouse_side_label(from_gender, language)
+                label = (
+                    f"родственник {side} (по браку)" if language == "ru"
+                    else f"relative {side} (by marriage)"
+                )
+                note = f"Two-hop affinal: «{sub['relationship']}» {side}."
+                return _result(
+                    label, "spouse_relative_by_marriage", "approximate", None, [note]
+                )
+
     return None
 
 
@@ -305,14 +353,16 @@ async def compute_relationship(
     to_person: Optional[Dict] = None,
     language: str = "ru",
     max_depth: int = 8,
+    _allow_spouse_recurse: bool = True,
 ) -> Dict:
     """
     Relationship of ``to_handle`` relative to ``from_handle`` as the spec's
     relationship result object (callers attach the ``from``/``to`` blocks).
 
     Tries the native Gramps calculator (blood/consanguineous) first; on no match,
-    falls back to a spouse-bridge that resolves in-law/affinal relationships.
-    ``path`` is always empty — the native endpoint returns no path.
+    falls back to a spouse-bridge that resolves in-law/affinal relationships
+    (including one two-hop "marriage → … → marriage" chain). ``path`` is always
+    empty — the native endpoint returns no path.
     """
     if from_handle == to_handle:
         return _result("сам" if language == "ru" else "self", "self", "exact", 0, [])
@@ -339,7 +389,8 @@ async def compute_relationship(
         to_person = await fetch_person(client, tree_id, to_handle)
     if from_person and to_person:
         affinal = await _affinal_relationship(
-            client, tree_id, from_person, to_person, language, max_depth
+            client, tree_id, from_person, to_person, language, max_depth,
+            allow_recurse=_allow_spouse_recurse,
         )
         if affinal:
             return affinal

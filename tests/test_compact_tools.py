@@ -31,6 +31,7 @@ from src.gramps_mcp.tools.relations import (
     _blood_code,
     _inlaw_from_spouse_blood,
     _refine_code,
+    _spouse_side_label,
     _spouse_word,
 )
 
@@ -129,3 +130,10 @@ def test_spouse_word():
     assert _spouse_word(1, "ru") == "муж"
     assert _spouse_word(0, "ru") == "жена"
     assert _spouse_word(1, "en") == "husband"
+
+
+def test_spouse_side_label():
+    # female `from` connects through her husband; male through his wife.
+    assert _spouse_side_label(0, "ru") == "по линии мужа"
+    assert _spouse_side_label(1, "ru") == "по линии жены"
+    assert _spouse_side_label(2, "ru") == "по линии супруга(и)"
