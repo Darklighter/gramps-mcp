@@ -32,6 +32,12 @@ from .analysis import (
     get_tree_info_tool,
 )
 
+# Compact read-only JSON tools (birthdays, relationships, people)
+from .birthdays import (
+    get_birthdays_tool,
+    get_birthdays_with_relationships_tool,
+)
+
 # Data Management Tools (9 tools)
 from .data_management import (
     create_citation_tool,
@@ -44,6 +50,8 @@ from .data_management import (
     create_repository_tool,
     create_source_tool,
 )
+from .people_compact import get_people_compact_tool
+from .relations import get_relationship_tool
 from .search_basic import (
     find_anything_tool,
     find_citation_tool,
@@ -89,4 +97,9 @@ __all__ = [
     "get_descendants_tool",
     "get_ancestors_tool",
     "get_recent_changes_tool",
+    # Compact JSON Tools
+    "get_birthdays_tool",
+    "get_birthdays_with_relationships_tool",
+    "get_relationship_tool",
+    "get_people_compact_tool",
 ]

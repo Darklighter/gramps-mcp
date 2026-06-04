@@ -26,6 +26,88 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 
+def parse_gramps_date(date_obj: dict) -> dict:
+    """
+    Parse a Gramps date object into structured, machine-readable parts.
+
+    Companion to ``format_date`` for the JSON/compact tools: instead of a single
+    display string it returns the discrete day/month/year, an ISO string when the
+    date is a known full calendar date, and a stable ``quality`` code.
+
+    Args:
+        date_obj (dict): Gramps date object with ``dateval`` / ``modifier`` /
+            ``quality`` (as returned inside an event's ``date`` field).
+
+    Returns:
+        dict: {
+            "day": int|None, "month": int|None, "year": int|None,
+            "iso": str|None,            # YYYY-MM-DD only for exact full dates
+            "display": str,             # human-readable (reuses format_date)
+            "quality": str,             # one of the date_quality codes
+        }
+    """
+    display = format_date(date_obj)
+
+    if not date_obj:
+        return {
+            "day": None,
+            "month": None,
+            "year": None,
+            "iso": None,
+            "display": display,
+            "quality": "unknown",
+        }
+
+    dateval = date_obj.get("dateval") or []
+    day = month = year = None
+    if len(dateval) >= 3:
+        d, m, y = dateval[0], dateval[1], dateval[2]
+        day = int(d) if d and d > 0 else None
+        month = int(m) if m and m > 0 else None
+        year = int(y) if y and y > 0 else None
+
+    modifier = date_obj.get("modifier", 0) or 0
+    quality = date_obj.get("quality", 0) or 0
+
+    # Map Gramps modifier/quality to the spec's date_quality codes. Modifier
+    # wins over quality where both apply (e.g. an estimated range is "range").
+    if modifier == 3:  # about
+        quality_code = "about"
+    elif modifier == 4:  # range (between)
+        quality_code = "range"
+    elif modifier in (5, 7, 8):  # span / from / to
+        quality_code = "span"
+    elif modifier == 6:  # textonly
+        quality_code = "textonly"
+    elif quality == 1:
+        quality_code = "estimated"
+    elif quality == 2:
+        quality_code = "calculated"
+    elif day and month and year:
+        quality_code = "exact"
+    elif day or month or year:
+        quality_code = "partial"
+    else:
+        quality_code = "unknown"
+
+    # ISO only for an unqualified, complete calendar date.
+    iso = None
+    if day and month and year and modifier == 0 and quality == 0:
+        try:
+            iso = datetime(year, month, day).date().isoformat()
+        except (ValueError, TypeError):
+            iso = None
+
+    return {
+        "day": day,
+        "month": month,
+        "year": year,
+        "iso": iso,
+        "display": display,
+        "quality": quality_code,
+    }
+
+
 def format_date(date_obj: dict) -> str:
     """
     Format Gramps date object into human-readable string with fallback.

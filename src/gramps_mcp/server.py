@@ -63,10 +63,20 @@ from .tools import (
     create_source_tool,
     find_anything_tool,
     get_ancestors_tool,
+    get_birthdays_tool,
+    get_birthdays_with_relationships_tool,
     get_descendants_tool,
+    get_people_compact_tool,
     get_recent_changes_tool,
+    get_relationship_tool,
     get_tree_info_tool,
 )
+from .tools.birthdays import (
+    GetBirthdaysParams,
+    GetBirthdaysWithRelationshipsParams,
+)
+from .tools.people_compact import GetPeopleCompactParams
+from .tools.relations import GetRelationshipParams
 from .tools.search_basic import find_type_tool
 from .tools.search_details import get_type_tool
 
@@ -208,6 +218,39 @@ TOOL_REGISTRY: Dict[str, Dict[str, Any]] = {
         "schema": TransactionHistoryParams,
         "handler": get_recent_changes_tool,
     },
+    # Compact JSON Tools (read-only, structured output)
+    "get_birthdays": {
+        "description": (
+            "List people whose birthday falls in a date range (handles "
+            "year-boundary ranges). Compact JSON with age and alive/dead flags."
+        ),
+        "schema": GetBirthdaysParams,
+        "handler": get_birthdays_tool,
+    },
+    "get_relationship": {
+        "description": (
+            "Relationship between two people by Gramps ID, via the native "
+            "Gramps relationship calculator. Compact JSON, locale-aware label."
+        ),
+        "schema": GetRelationshipParams,
+        "handler": get_relationship_tool,
+    },
+    "get_birthdays_with_relationships": {
+        "description": (
+            "Birthdays in a date range plus each person's relationship to the "
+            "given anchor people. Compact JSON; ideal for the daily report."
+        ),
+        "schema": GetBirthdaysWithRelationshipsParams,
+        "handler": get_birthdays_with_relationships_tool,
+    },
+    "get_people_compact": {
+        "description": (
+            "Field-selectable compact JSON list of people for bulk tasks - "
+            "use instead of find_type to avoid large text output."
+        ),
+        "schema": GetPeopleCompactParams,
+        "handler": get_people_compact_tool,
+    },
 }
 
 
@@ -294,7 +337,7 @@ async def root(request):
             "version": "1.0.0",
             "description": "MCP server for Gramps Web API genealogy operations",
             "mcp_endpoint": "/mcp",
-            "tools_count": 16,
+            "tools_count": 20,
         }
     )
 
@@ -305,7 +348,7 @@ async def health_check(request):
     from starlette.responses import JSONResponse
 
     return JSONResponse(
-        {"status": "healthy", "service": "Gramps MCP Server", "tools": 16}
+        {"status": "healthy", "service": "Gramps MCP Server", "tools": 20}
     )
 
 
